@@ -2,8 +2,8 @@ name: Generate rule set files
 
 on:
   schedule:
-    - cron: "0 0 * * *"  # Run daily at 0:00 UTC
-  workflow_dispatch:    # Allow manual trigger
+    - cron: "0 0 * * *"  # Run daily at 0:00
+  workflow_dispatch:    # Allow run manually
 
 jobs:
   main:
@@ -13,26 +13,27 @@ jobs:
     env:
       GIT_TRACE: 2
       GIT_CURL_VERBOSE: 2
+      GIT_TRACE_PERFORMANCE: 2
+      GIT_TRACE_PACK_ACCESS: 2
+      GIT_TRACE_PACKET: 2
+      GIT_TRACE_PACKFILE: 2
+      GIT_TRACE_SETUP: 2
+      GIT_TRACE_SHALLOW: 2
       GOFLAGS: "-v"
     steps:
-      - name: Checkout repository
+      - name: Checkout repo
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0      # 完整克隆，避免浅克隆问题
-          clean: true
-          lfs: false
+          ref: master
 
-      - name: Disable git maintenance
-        run: git config --global maintenance.auto 0
-
-      - name: Setup Go 1.25.3
+      - name: Use Golang
         uses: actions/setup-go@v4
         with:
-          go-version: '1.25.3'
-
+          go-version: '1.21'
+      
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y make curl
-
+      
       - name: Create working directory
         run: mkdir -p configs
 
@@ -67,18 +68,24 @@ jobs:
         env:
           PATH: $HOME/go/bin:$PATH
         run: |
-          for f in *.srs; do
-            json_file="${f%.srs}.json"
-            sing-box rule-set decompile "$f" -o "$json_file"
-          done
-          [ -f custom.json ] || echo '{"rules":[]}' > custom.json
+          sing-box rule-set decompile geosite-cn.srs -o geosite-cn.json
+          sing-box rule-set decompile geosite-private.srs -o geosite-private.json
+          sing-box rule-set decompile geosite-category-porn.srs -o geosite-category-porn.json
+          sing-box rule-set decompile geosite-category-cryptocurrency.srs -o geosite-category-cryptocurrency.json
+          sing-box rule-set decompile geosite-category-vpnservices.srs -o geosite-category-vpnservices.json
+          sing-box rule-set decompile geosite-category-entertainment-cn.srs -o geosite-category-entertainment-cn.json
+          sing-box rule-set decompile geosite-category-entertainment@cn.srs -o geosite-category-entertainment@cn.json
+          sing-box rule-set decompile geosite-category-games@cn.srs -o geosite-category-games@cn.json
+          sing-box rule-set decompile geosite-category-game-accelerator-cn.srs -o geosite-category-game-accelerator-cn.json
+          sing-box rule-set decompile geosite-category-enhance-gaming@cn.srs -o geosite-category-enhance-gaming@cn.json
+          sing-box rule-set decompile geosite-category-novel.srs -o geosite-category-novel.json
 
-      - name: Merge rule set files including custom rules
+      - name: Merge rule set files
         working-directory: ./configs
         env:
           PATH: $HOME/go/bin:$PATH
         run: |
-          sing-box rule-set merge -c geosite-cn.json -c geosite-private.json -c custom.json geosite-direct.json
+          sing-box rule-set merge -c geosite-cn.json -c geosite-private.json geosite-direct.json
           sing-box rule-set merge \
             -c geosite-category-porn.json \
             -c geosite-category-cryptocurrency.json \
@@ -89,9 +96,8 @@ jobs:
             -c geosite-category-game-accelerator-cn.json \
             -c geosite-category-enhance-gaming@cn.json \
             -c geosite-category-novel.json \
-            -c custom.json \
             geosite-reject.json
-
+            
       - name: Compile rule set files
         working-directory: ./configs
         env:
@@ -105,17 +111,15 @@ jobs:
         run: |
           mv -v geoip-cn.srs ../geoip-direct.srs
           rm -rvf configs
-
+        
       - name: Commit and push changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "actions@github.com"
-
           git add -v geosite-direct.srs geosite-reject.srs geoip-direct.srs
-
           if ! git diff --cached --quiet; then
             git commit -v -m "[CI] Update rule set files regularly"
-            git push -v origin HEAD   # 推送到当前默认分支
+            git push -v origin HEAD
           else
             echo "No changes to commit, skipping push."
           fi
