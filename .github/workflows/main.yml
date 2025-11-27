@@ -3,7 +3,7 @@ name: Generate rule set files
 on:
   schedule:
     - cron: "0 0 * * *"  # Run daily at 0:00
-  workflow_dispatch:    # Allow manual trigger
+  workflow_dispatch:
 
 jobs:
   main:
@@ -24,7 +24,7 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0   # 完整克隆，自动使用默认分支
+          fetch-depth: 0
 
       - name: Use Golang
         uses: actions/setup-go@v4
@@ -66,7 +66,7 @@ jobs:
       - name: Decompile rule set files
         working-directory: ./configs
         env:
-          PATH=$HOME/go/bin:$PATH
+          PATH: $HOME/go/bin:$PATH
         run: |
           sing-box rule-set decompile geosite-cn.srs -o geosite-cn.json
           sing-box rule-set decompile geosite-private.srs -o geosite-private.json
@@ -83,7 +83,7 @@ jobs:
       - name: Merge rule set files
         working-directory: ./configs
         env:
-          PATH=$HOME/go/bin:$PATH
+          PATH: $HOME/go/bin:$PATH
         run: |
           sing-box rule-set merge -c geosite-cn.json -c geosite-private.json geosite-direct.json
           sing-box rule-set merge \
@@ -101,7 +101,7 @@ jobs:
       - name: Compile rule set files
         working-directory: ./configs
         env:
-          PATH=$HOME/go/bin:$PATH
+          PATH: $HOME/go/bin:$PATH
         run: |
           sing-box rule-set compile geosite-direct.json -o ../geosite-direct.srs
           sing-box rule-set compile geosite-reject.json -o ../geosite-reject.srs
@@ -119,9 +119,8 @@ jobs:
           git add -v geosite-direct.srs geosite-reject.srs geoip-direct.srs
           if ! git diff --cached --quiet; then
             git commit -v -m "[CI] Update rule set files regularly"
-            git push -v origin HEAD  # 自动推送当前分支
+            git push -v origin HEAD
           else
             echo "No changes to commit, skipping push."
-          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
