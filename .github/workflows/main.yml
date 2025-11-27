@@ -1,0 +1,115 @@
+name: Generate rule set files
+
+on:
+  schedule:
+    - cron: "0 0 * * *"  # Run daily at 0:00 UTC
+  workflow_dispatch:    # Allow manual trigger
+
+jobs:
+  main:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    env:
+      GIT_TRACE: 2
+      GIT_CURL_VERBOSE: 2
+      GOFLAGS: "-v"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          ref: master
+
+      - name: Setup latest Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: 'latest'
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y make curl
+
+      - name: Create working directory
+        run: mkdir -p configs
+
+      - name: Download SRS files
+        working-directory: ./configs
+        run: |
+          curl -L -o geoip-cn.srs https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs --trace --trace-time
+          curl -L -o geosite-cn.srs https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs --trace --trace-time
+          curl -L -o geosite-private.srs https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-private.srs --trace --trace-time
+          curl -L -o geosite-category-porn.srs https://github.com/SagerNet/sing-geosite/raw/refs/heads/rule-set/geosite-category-porn.srs --trace --trace-time
+          curl -L -o geosite-category-cryptocurrency.srs https://github.com/SagerNet/sing-geosite/raw/refs/heads/rule-set/geosite-category-cryptocurrency.srs --trace --trace-time
+          curl -L -o geosite-category-vpnservices.srs https://github.com/SagerNet/sing-geosite/raw/refs/heads/rule-set/geosite-category-vpnservices.srs --trace --trace-time
+          curl -L -o geosite-category-entertainment-cn.srs https://github.com/SagerNet/sing-geosite/raw/refs/heads/rule-set/geosite-category-entertainment-cn.srs --trace --trace-time
+          curl -L -o geosite-category-entertainment@cn.srs https://github.com/SagerNet/sing-geosite/raw/refs/heads/rule-set/geosite-category-entertainment@cn.srs --trace --trace-time
+          curl -L -o geosite-category-games@cn.srs https://github.com/SagerNet/sing-geosite/raw/refs/heads/rule-set/geosite-category-games@cn.srs --trace --trace-time
+          curl -L -o geosite-category-game-accelerator-cn.srs https://github.com/SagerNet/sing-geosite/raw/refs/heads/rule-set/geosite-category-game-accelerator-cn.srs --trace --trace-time
+          curl -L -o geosite-category-enhance-gaming@cn.srs https://github.com/SagerNet/sing-geosite/raw/refs/heads/rule-set/geosite-category-enhance-gaming@cn.srs --trace --trace-time
+          curl -L -o geosite-category-novel.srs https://github.com/SagerNet/sing-geosite/raw/refs/heads/rule-set/geosite-category-novel.srs --trace --trace-time
+
+      - name: Clone sing-box
+        run: git clone -v --depth 1 https://github.com/SagerNet/sing-box.git
+
+      - name: Build and install sing-box
+        working-directory: ./sing-box
+        run: |
+          export GOPATH=$HOME/go
+          export PATH=$GOPATH/bin:$PATH
+          make install --trace
+
+      - name: Decompile rule set files
+        working-directory: ./configs
+        env:
+          PATH: $HOME/go/bin:$PATH
+        run: |
+          # 解码官方规则
+          for f in *.srs; do
+            json_file="${f%.srs}.json"
+            sing-box rule-set decompile "$f" -o "$json_file"
+          done
+
+          # 如果自定义规则文件不存在，则创建空文件
+          [ -f custom.json ] || echo '{"rules":[]}' > custom.json
+
+      - name: Merge rule set files including custom rules
+        working-directory: ./configs
+        env:
+          PATH: $HOME/go/bin:$PATH
+        run: |
+          # 合并直连规则
+          sing-box rule-set merge -c geosite-cn.json -c geosite-private.json -c custom.json geosite-direct.json
+          # 合并拒绝/屏蔽规则
+          sing-box rule-set merge \
+            -c geosite-category-porn.json \
+            -c geosite-category-cryptocurrency.json \
+            -c geosite-category-vpnservices.json \
+            -c geosite-category-entertainment-cn.json \
+            -c geosite-category-entertainment@cn.json \
+            -c geosite-category-games@cn.json \
+            -c geosite-category-game-accelerator-cn.json \
+            -c geosite-category-enhance-gaming@cn.json \
+            -c geosite-category-novel.json \
+            -c custom.json \
+            geosite-reject.json
+
+      - name: Compile rule set files
+        working-directory: ./configs
+        env:
+          PATH: $HOME/go/bin:$PATH
+        run: |
+          sing-box rule-set compile geosite-direct.json -o ../geosite-direct.srs
+          sing-box rule-set compile geosite-reject.json -o ../geosite-reject.srs
+
+      - name: Clean up working directory
+        working-directory: ./configs
+        run: |
+          mv -v geoip-cn.srs ../geoip-direct.srs
+          rm -rvf configs
+
+      - name: Commit and push changes
+        run: |
+          git add -v geosite-direct.srs geosite-reject.srs geoip-direct.srs
+          git diff --cached --quiet || git commit -v -m "[CI] Update rule set files regularly"
+          git diff --cached --quiet || git push -v origin master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
