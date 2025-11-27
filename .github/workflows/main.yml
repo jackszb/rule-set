@@ -19,6 +19,12 @@ jobs:
         uses: actions/checkout@v3
         with:
           ref: master
+          fetch-depth: 0      # 完整克隆，避免 git maintenance 出错
+          clean: true
+          lfs: false
+
+      - name: Disable git maintenance
+        run: git config --global maintenance.auto 0
 
       - name: Setup latest Go
         uses: actions/setup-go@v4
@@ -62,13 +68,10 @@ jobs:
         env:
           PATH: $HOME/go/bin:$PATH
         run: |
-          # 解码所有官方 SRS 文件
           for f in *.srs; do
             json_file="${f%.srs}.json"
             sing-box rule-set decompile "$f" -o "$json_file"
           done
-
-          # 如果自定义规则文件不存在，创建空文件
           [ -f custom.json ] || echo '{"rules":[]}' > custom.json
 
       - name: Merge rule set files including custom rules
@@ -76,9 +79,7 @@ jobs:
         env:
           PATH: $HOME/go/bin:$PATH
         run: |
-          # 合并直连规则
           sing-box rule-set merge -c geosite-cn.json -c geosite-private.json -c custom.json geosite-direct.json
-          # 合并拒绝/屏蔽规则
           sing-box rule-set merge \
             -c geosite-category-porn.json \
             -c geosite-category-cryptocurrency.json \
@@ -108,13 +109,11 @@ jobs:
 
       - name: Commit and push changes
         run: |
-          # 配置默认 Git 用户信息
           git config user.name "github-actions[bot]"
           git config user.email "actions@github.com"
 
           git add -v geosite-direct.srs geosite-reject.srs geoip-direct.srs
 
-          # 检查是否有变化再 commit/push
           if ! git diff --cached --quiet; then
             git commit -v -m "[CI] Update rule set files regularly"
             git push -v origin master
