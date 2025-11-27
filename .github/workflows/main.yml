@@ -18,8 +18,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
         with:
-          ref: master
-          fetch-depth: 0      # 完整克隆，避免 git maintenance 出错
+          fetch-depth: 0      # 完整克隆，避免浅克隆问题
           clean: true
           lfs: false
 
@@ -116,7 +115,7 @@ jobs:
 
           if ! git diff --cached --quiet; then
             git commit -v -m "[CI] Update rule set files regularly"
-            git push -v origin master
+            git push -v origin HEAD   # 使用 HEAD 代替 master/main，推送到当前分支
           else
             echo "No changes to commit, skipping push."
           fi
