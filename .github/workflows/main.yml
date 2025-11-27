@@ -20,20 +20,22 @@ jobs:
       GIT_TRACE_SETUP: 2
       GIT_TRACE_SHALLOW: 2
       GOFLAGS: "-v"
+
     steps:
       - name: Checkout repo
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y make curl tar
+
       - name: Use Golang
         uses: actions/setup-go@v4
         with:
           go-version: '1.25.3'
-      
-      - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y make curl
-      
+          cache: false   # ← 关闭缓存，避免 go.sum 警告
+
       - name: Create working directory
         run: mkdir -p configs
 
@@ -97,7 +99,7 @@ jobs:
             -c geosite-category-enhance-gaming@cn.json \
             -c geosite-category-novel.json \
             geosite-reject.json
-            
+
       - name: Compile rule set files
         working-directory: ./configs
         env:
