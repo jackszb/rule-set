@@ -62,13 +62,13 @@ jobs:
         env:
           PATH: $HOME/go/bin:$PATH
         run: |
-          # 解码官方规则
+          # 解码所有官方 SRS 文件
           for f in *.srs; do
             json_file="${f%.srs}.json"
             sing-box rule-set decompile "$f" -o "$json_file"
           done
 
-          # 如果自定义规则文件不存在，则创建空文件
+          # 如果自定义规则文件不存在，创建空文件
           [ -f custom.json ] || echo '{"rules":[]}' > custom.json
 
       - name: Merge rule set files including custom rules
@@ -108,8 +108,18 @@ jobs:
 
       - name: Commit and push changes
         run: |
+          # 配置默认 Git 用户信息
+          git config user.name "github-actions[bot]"
+          git config user.email "actions@github.com"
+
           git add -v geosite-direct.srs geosite-reject.srs geoip-direct.srs
-          git diff --cached --quiet || git commit -v -m "[CI] Update rule set files regularly"
-          git diff --cached --quiet || git push -v origin master
+
+          # 检查是否有变化再 commit/push
+          if ! git diff --cached --quiet; then
+            git commit -v -m "[CI] Update rule set files regularly"
+            git push -v origin master
+          else
+            echo "No changes to commit, skipping push."
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
